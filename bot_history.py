@@ -67,7 +67,7 @@ def readInputvariables():   # this function reads the input variables from file 
         var['kissLow'] = int(var['kissLow'])
         var['kissMA'] = int(var['kissMA'])
         var['kissHigh'] = int(var['kissHigh'])
-        var['kissStoploss'] = int(var['kissHigh'])        
+        var['kissStoploss'] = float(var['kissStoploss'])        
         return var
                  
     except Exception, e:
@@ -150,10 +150,7 @@ if __name__ == '__main__':
     i = 0
     while i < len(dataF):
         if i >= 20:
-            trade = kissBB(dataF.ix[i - 20:i], ledger, i)
-            if trade:
-                print i
-     
+            trade = kissBB(dataF.ix[i - 20:i], ledger, i, var)   # feeds the last 20 entries to the kissBB strategy, skips the first 20 (need at least 20 for MA)    
         logging.info('i={0} \n{1}'.format(i, dataF.loc[i]))
         i = i + 1
     

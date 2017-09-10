@@ -8,7 +8,7 @@ import logging
 import pandas as pd
 
 
-def kissBB(data, ledger, index):
+def kissBB(data, ledger, index, var):
     try:
         currentPrice = data['close'].iloc[-1]
         previousPrice = data['close'].iloc[-2]
@@ -20,28 +20,30 @@ def kissBB(data, ledger, index):
         thresholdD = bolLower + 0.2 * (ma20 - bolLower)
         thresholdU = bolUpper - 0.2 * (bolUpper - ma20)
         
-        if not ledger.ongoingOrder and touchLowerBB(data, bolLower, 3) and not maDecreasing(data, 5):  # price is 20% above lower BB and no ong                                                                                    # price is increasing over the last depth periods
+        if not ledger.ongoingOrder:  
+            if touchLowerBB(data, bolLower, var['kissLow']) and not maDecreasing(data, var['kissMA']):  # touched lowerBB and moving average not decreasing                                                                                    # price is increasing over the last depth periods
                 logging.info('buying at {0}'.format(ledger.purchasePrice))     
-                transaction = [{'date': data['date'].iloc[-1], 'type': 'buy', 'price' : currentPrice, 'profit': 0, 'xplanation':'', 'index':index}]
+                transaction = [{'date': data['date'].iloc[-1], 'type': 'buy', 'price' : currentPrice, 'profit': 0, 'explanation':'buy', 'index':index}]
                 ledger.setPurchaseprice (currentPrice)
                 ledger.setOngoingorder(True)
                 ledger.write(transaction)
                 return(True)
 
-        if ledger.ongoingOrder:                   
-            if currentPrice < 0.95 * ledger.purchasePrice:          # we are losing 2%, stop loss, we close the position
+        if ledger.ongoingOrder:  
+            stopLossprice = ((100 - var['kissStoploss']) / 100) * ledger.purchasePrice
+            if currentPrice < stopLossprice:          # we are losing kissStopLoss, stop loss, we close the position
                 loss = currentPrice - ledger.purchasePrice
                 logging.info('sell - closing position - stop loss price {0} loss {1}'.format(currentPrice, loss))
-                transaction = [{'date': data['date'].iloc[-1], 'type': 'sell', 'price' : currentPrice, 'profit' : loss, 'xplanation':'stop loss', 'index':index}]
+                transaction = [{'date': data['date'].iloc[-1], 'type': 'sell', 'price' : currentPrice, 'profit' : loss, 'explanation':'stop loss', 'index':index}]
                 ledger.setPurchaseprice(currentPrice)
                 ledger.setOngoingorder(False)
                 ledger.write(transaction)              
                 return (True)
                                                                                        
-            if  touchUpperBB(data, bolUpper, 2):                    # closing position
+            if  touchUpperBB(data, bolUpper, var['kissHigh']):                    # closing position
                 profit = currentPrice - ledger.purchasePrice
                 logging.info('sell price {0} profit {1} '.format(currentPrice, profit))
-                transaction = [{'date': data['date'].iloc[-1], 'type': 'sell', 'price' : currentPrice, 'profit':profit, 'xplanation':'hopefully profit', 'index':index}]
+                transaction = [{'date': data['date'].iloc[-1], 'type': 'sell', 'price' : currentPrice, 'profit':profit, 'explanation':'hopefully profit', 'index':index}]
                 ledger.setPurchaseprice(currentPrice)
                 ledger.setOngoingorder(False)
                 ledger.write(transaction)              
