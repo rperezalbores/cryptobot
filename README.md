@@ -1,3 +1,5 @@
+(more readable using 'raw' format)
+
 This is an experimental bot to trade cryptocurrency. It can also be easily extended to trade regular stocks
 
 Two types:
@@ -21,7 +23,7 @@ pip install matplotlib
 pip install numpy
 pip install panda
 
-If there are missing dependencies, solved them :-) google is your friend
+If there are missing dependencies, solve them :-) google is your friend
 
 Preparation:
 
@@ -62,7 +64,8 @@ Based on the data input and the strategy the bot returns a panda dataframe with 
 
 each one is a dummy trade, indicating timestamp of the transaction, price, operation type and if it is a selling operation, the P&L
 
-Finally provides a summary P&L (hopefull profit)
+Finally provides a summary P&L (hopefull profit) 
+Also plots a graph. The index value in the panda dataframe table indicates the candlestick where the transaction took place in the plotted chart. For instance, index 21 indicates that the bot bought at the 21 candlestick in the chart.
 
 [264 rows x 6 columns]
 profit 168.75707524
