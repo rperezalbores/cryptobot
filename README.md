@@ -21,7 +21,7 @@ pip install matplotlib
 pip install numpy
 pip install panda
 
-If there are missing dependencies, solved them :-) google is your friend
+If there are missing dependencies, solve them :-) google is your friend
 
 Preparation:
 
