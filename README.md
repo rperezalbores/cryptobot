@@ -68,8 +68,3 @@ Finally provides a summary P&L (hopefull profit)
 profit 168.75707524
 
 
-
-
-
-
-
