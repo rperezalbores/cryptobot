@@ -2,15 +2,10 @@
 
 This is an experimental bot to trade cryptocurrency. It can also be easily extended to trade regular stocks
 
-Two types:
+bot.py - reads data in real time (mode=realtime) or historic data (mode=history)
 
-bot.py - reads data in real time
-bot_history.py - reads historic data
-
-At this point all development goes to bot_history.py
-
-bot_history.py reads the user input data from file botConfig.cfg -it must be in the same directory as bot_history.py
-bot_history.py uses functions defined in strategy.py
+bot.py reads the user input data from file botConfig.cfg -it must be in the same directory as bot.py
+bot.py uses functions defined in strategy.py
 
 Installation:
 
