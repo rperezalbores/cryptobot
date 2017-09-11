@@ -217,13 +217,13 @@ if __name__ == '__main__':
                 trade = kissBB(candlesTAdf, ledger, i, var)                         # go make some money
                 i = 0                                                               # reset the period
                 realtimeData = realtimeData.ix[-1:-2]                               # flushes the data, ready for a new period to calculate the candle
-            if trade:
-                df = pd.DataFrame(ledger.ledger)                                    # transfors ledger in a dataframe for easy analysis
-                print df
-                logging.info(df)
-                print 'profit', df['profit'].sum()
-                logging.info('profit {0}'.format(df['profit'].sum()))
-                
+                if trade:
+                    df = pd.DataFrame(ledger.ledger)                                # transfors ledger in a dataframe for easy analysis
+                    print df
+                    logging.info(df)
+                    print 'profit', df['profit'].sum()
+                    logging.info('profit {0}'.format(df['profit'].sum()))
+                    
             if len(candles) > 100:
                 candles = candles[1:]                                               # drops the first row, preventing candles growth to infinitum: allows 100 candles
     
