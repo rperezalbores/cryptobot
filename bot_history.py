@@ -5,7 +5,7 @@ Created on Sep 2, 2017
 '''
 import time
 import datetime
-from dateutil import parser  # covenient lib to manipulate dates
+from dateutil import parser  # covenient library to manipulate dates
 import logging
 from poloniex import PoloniexPublic
 import pandas as pd
@@ -53,6 +53,9 @@ def readInputvariables():   # this function reads the input variables from file 
         
         var['pair'] = str(var['pair'])
         var['exchange'] = str(var['exchange'])
+        var['mode'] = str(var['mode'])
+        var['polling'] = int(var['polling'])
+        var['candleStickperiod'] = int(var['candleStickperiod'])
         start = parser.parse(var['start'])              # start is now DateTime format
         var['start'] = time.mktime(start.timetuple())   # now converted into unix time
         end = parser.parse(var['end'])                  # end is now DateTime format
@@ -74,7 +77,42 @@ def readInputvariables():   # this function reads the input variables from file 
         print 'something wrong on the configuration file: wrong variables ', str(e)
    
 
-def pullData(pair, period, uStart, uEnd):   # this function retrieves data from the exchange
+def connectExchange(exchange):	             # this function connects to the exchange and returns its handle
+    try:
+        # connects to Poloniex public API
+        return PoloniexPublic()
+
+    except Exception, e:
+        print 'connectExchange ', str(e)
+
+def pullRealtime(pair, exchangeHandle):	     # this function retrieves real time data and returns a dataset
+    try:
+        dataAPI = exchangeHandle.returnTicker()                 # grabs ticker from exchange
+        dataPair = dataAPI[pair]                                # select the pair we are interested in
+        df = pd.DataFrame([dataPair], columns=dataPair.keys())  # imports data (dictionary type) into panda dataset
+        return df                                               # returns dataset
+
+    except Exception, e:
+        print 'pullRealtime ', str(e)
+
+def createCandle(rawData):	                 # this function returns a candlestick based on the real time data 
+    try:
+        high = rawData['last'].max()
+        volume = rawData['quoteVolume'].mean()
+        low = rawData['last'].min()
+        date = str(datetime.datetime.now())
+        close = rawData['last'].iloc[-1]
+        weightedAverage = rawData['last'].mean()
+        opend = rawData['last'].iloc[0]
+
+        candle = [{'date': date, 'open': opend, 'high': high,
+                   'low': low, 'close': close, 'volume': volume}]
+        return candle
+
+    except Exception, e:
+        print 'createCandle', str(e)
+
+def pullHistory(pair, period, uStart, uEnd):  # this function retrieves historical data from the exchange between two dates
     try:
         print uStart, uEnd
         pol = PoloniexPublic()
@@ -91,10 +129,9 @@ def pullData(pair, period, uStart, uEnd):   # this function retrieves data from 
         return df
 
     except Exception, e:
-        print 'pull Data ', str(e)
+        print 'PullHistory', str(e)
 
-
-def analysis(ds):
+def analysis(ds):	                          # this function runs technical analysis over the dataset and adds results to the dataset
     try:
         ds['20d_ma'] = ds['close'].rolling(window=20).mean()
         ds['50d_ma'] = ds['close'].rolling(window=50).mean()
@@ -112,8 +149,7 @@ def analysis(ds):
     except Exception, e:
         print 'analysis ', str(e)
 
-
-def graphStock(df, pair):
+def graphHistory(df, pair):	                  # this function graphs historical data
     try:
         fig = plt.figure()
         ax = plt.subplot2grid((1, 1), (0, 0))
@@ -141,25 +177,64 @@ def graphStock(df, pair):
 
 if __name__ == '__main__':
 
-    var = readInputvariables()              # reads input variables from file
-                                            # fetches data from the exchange
-    data = pullData(var['pair'], var['period'], var['start'], var['end'])
-    dataF = analysis(data)                  # calculates technical analysis on the fetched data
-    ledger = ledger()                       # instantiates the ledger
+    var = readInputvariables()                                                      # reads input variables from file
+    ledger = ledger()                                                               # instantiates the ledger
+    logging.info('starting bot mode {0}'.format(var['mode']))
+    
+    if var['mode'] == 'history':                    
+        data = pullHistory(var['pair'], var['period'], var['start'], var['end'])    # fetches historic data from the exchange between dates
+        dataF = analysis(data)                                                      # calculates technical analysis on the fetched data
+            
+        i = 0
+        while i < len(dataF):
+            if i >= 20:
+                trade = kissBB(dataF.ix[i - 20:i], ledger, i, var)   # feeds the last 20 entries to the kissBB strategy, skips the first 20 (need at least 20 for MA)    
+            logging.info('i={0} \n{1}'.format(i, dataF.loc[i]))
+            i = i + 1
         
-    i = 0
-    while i < len(dataF):
-        if i >= 20:
-            trade = kissBB(dataF.ix[i - 20:i], ledger, i, var)   # feeds the last 20 entries to the kissBB strategy, skips the first 20 (need at least 20 for MA)    
-        logging.info('i={0} \n{1}'.format(i, dataF.loc[i]))
-        i = i + 1
+        df = pd.DataFrame(ledger.ledger)                             # transfors ledger in a dataframe for easy analysis
+        print df
+        logging.info(df)
+        print 'profit', df['profit'].sum()
+        logging.info('profit {0}'.format(df['profit'].sum()))
+        graphHistory(dataF, var['pair'])
     
-    df = pd.DataFrame(ledger.ledger)               
-    print df
-    print 'profit', df['profit'].sum()
+    elif var['mode'] == 'realtime':
+        exchangeHandle = connectExchange(var['exchange'])                           # connects to exchange
+        logging.info('connected to ' + var['exchange'] + ' pulling data')           # logs connection
+        realtimeData = pullRealtime(var['pair'], exchangeHandle)                    # initializes dataframe
+        candles = []                                                                # initializes our data structure
     
-    graphStock(dataF, var['pair'])
+        i = 0
+        while True:
+            realtimeData = pd.concat((realtimeData, pullRealtime(var['pair'], exchangeHandle)), ignore_index=True)       # pulls last price from exchange and appends it to the dataframe
+            i = i + 1
+            if i == var['candleStickperiod']:                                       # is it time to create a new candle?
+                newCandle = createCandle(realtimeData)                              # create new candle
+                candles = candles + newCandle                                       # adds the new candle to the candle list
+                candlesDF = pd.DataFrame(candles)                                   # create dataframe ready for technical analysis
+                candlesTAdf = analysis(candlesDF)                                   # dataframe contains now the candles and the technical analysis
+                trade = kissBB(candlesTAdf, ledger, i, var)                         # go make some money
+                i = 0                                                               # reset the period
+                realtimeData = realtimeData.ix[-1:-2]                               # flushes the data, ready for a new period to calculate the candle
+            if trade:
+                df = pd.DataFrame(ledger.ledger)                                    # transfors ledger in a dataframe for easy analysis
+                print df
+                logging.info(df)
+                print 'profit', df['profit'].sum()
+                logging.info('profit {0}'.format(df['profit'].sum()))
+                
+            if len(candles) > 100:
+                candles = candles[1:]                                               # drops the first row, preventing candles growth to infinitum: allows 100 candles
     
-    # trade(dataF.ix[20])
-    # dataF.plot(x='date', y='weightedAverage')
-    # plt.show()
+            # dataF = analysis(data)
+            # print dataF
+            # dataF.plot(x='date', y='weightedAverage')
+            # plt.show()
+            # polling (in seconds) determines the polling interval to the exchange
+            time.sleep(var['polling'])
+
+    
+    else:
+        pass
+
