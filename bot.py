@@ -17,19 +17,19 @@ from matplotlib.finance import candlestick2_ohlc
 from matplotlib import style
 # import plotly.plotly as py
 # import plotly.graph_objs as go
-from strategy import kissBB
+from strategy import analysis, tannous, kissBB
 
 style.use('ggplot')
 logging.basicConfig(filename='strategy.log', level=logging.INFO, format='%(asctime)s:%(levelname)s:%(message)s')
 
    
-class ledger:     # #this class holds the bot transactions. It also keeps track of open position (ongoingOrder = True) and its price (purchasePrice)
+class ledger:     # this class holds the bot transactions. It also keeps track of open position (ongoingOrder = True) and its price (purchasePrice)
     def __init__(self):
-        self.ledger = []    # list of dictionaries  [{'date': date, 'type': 'buy/sell', 'price' : price}]
+        self.ledger = []                        # list of dictionaries  [{'date': date, 'type': 'buy/sell', 'price' : price}]
         self.ongoingOrder = False
         self.purchasePrice = 0
  
-    def write (self, newEntry):     # this function adds an entry to the transaction ledger
+    def write (self, newEntry):                 # this function adds an entry to the transaction ledger
         self.ledger = self.ledger + newEntry
         
     def setPurchaseprice (self, purchasePrice): # this function sets the purchasePrice of our last open position
@@ -65,12 +65,13 @@ def readInputvariables():   # this function reads the input variables from file 
             exit(0)   
         var['period'] = int(var['period'])
         if var['period'] not in [300, 900, 1800, 7200, 1440, 86400]:  
-            print var['period'], ' must be one of 300, 900, 1800, 7200, 14400, and 86400' 
+            print var['period'], ' must be one of these values: 300, 900, 1800, 7200, 14400, and 86400' 
             exit(0)
+        var['strategy'] = str(var['strategy'])
         var['kissLow'] = int(var['kissLow'])
         var['kissMA'] = int(var['kissMA'])
         var['kissHigh'] = int(var['kissHigh'])
-        var['kissStoploss'] = float(var['kissStoploss'])        
+        var['Stoploss'] = float(var['Stoploss'])        
         return var
                  
     except Exception, e:
@@ -79,13 +80,18 @@ def readInputvariables():   # this function reads the input variables from file 
 
 def connectExchange(exchange):                 # this function connects to the exchange and returns its handle
     try:
-        # connects to Poloniex public API
-        return PoloniexPublic()
-
+        if exchange == 'Poloniex':
+            # connects to Poloniex public API
+            return PoloniexPublic()
+        elif exchange == 'Bittrex':
+            # connects to Bittrex - to be implemented
+            pass
+        else:
+            print 'Error connecting to exchange. Check botConfig.cfg file and make sure the exchange is spelt correctly'
     except Exception, e:
         print 'connectExchange ', str(e)
 
-def pullRealtime(pair, exchangeHandle):         # this function retrieves real time data and returns a dataset
+def pullRealtime(pair, exchangeHandle):        # this function retrieves real time data and returns a dataset
     try:
         dataAPI = exchangeHandle.returnTicker()                 # grabs ticker from exchange
         dataPair = dataAPI[pair]                                # select the pair we are interested in
@@ -95,15 +101,15 @@ def pullRealtime(pair, exchangeHandle):         # this function retrieves real t
     except Exception, e:
         print 'pullRealtime ', str(e)
 
-def createCandle(rawData):                     # this function returns a candlestick based on the real time data 
+def createCandle(rawData):                     # this function returns a candlestick based on real time data 
     try:
-        high = rawData['last'].max()
-        volume = rawData['quoteVolume'].mean()
-        low = rawData['last'].min()
+        high = rawData['last'].max()                # maximum of this period
+        volume = rawData['quoteVolume'].mean()      # volumen average
+        low = rawData['last'].min()                 # minimum of this period
         date = str(datetime.datetime.now())
-        close = rawData['last'].iloc[-1]
-        weightedAverage = rawData['last'].mean()
-        opend = rawData['last'].iloc[0]
+        close = rawData['last'].iloc[-1]            # closing price
+        # weightedAverage = rawData['last'].mean()
+        opend = rawData['last'].iloc[0]             # open price
 
         candle = [{'date': date, 'open': opend, 'high': high,
                    'low': low, 'close': close, 'volume': volume}]
@@ -112,56 +118,40 @@ def createCandle(rawData):                     # this function returns a candles
     except Exception, e:
         print 'createCandle', str(e)
 
-def pullHistory(pair, period, uStart, uEnd):  # this function retrieves historical data from the exchange between two dates
+def pullHistory(pair, period, uStart, uEnd):   # this function retrieves historical data from the exchange between two dates. Returns panda dataframe
     try:
         print uStart, uEnd
-        pol = PoloniexPublic()
+        pol = PoloniexPublic()                                      # connects to Poloniex
 
-        # dataAPI = pol.returnTradeHistory(pair)  -> returns last 200 history entries 
-        dataAPI = pol.returnChartData(pair, period, uStart, uEnd)  # returns entries between two dates, at the given period:300, 900, 1800 (sec)
-        print dataAPI
-        df = pd.DataFrame(dataAPI)
-        df['date'] = pd.to_datetime(df['date'], unit='s')  # converts UNIX dates returned by Poloniex into human readable dates
-
+        dataAPI = pol.returnChartData(pair, period, uStart, uEnd)   # returns entries between two dates, at the given period:300, 900, 1800 (sec)
+        df = pd.DataFrame(dataAPI)                                  # coverts retrieved data from Poloniex into a dataframe
+        df['date'] = pd.to_datetime(df['date'], unit='s')           # converts UNIX dates returned by Poloniex into human readable dates
         print 'Pulled ' + str(len(df)) + ' samples of', pair, period
-        print 'sleeping'
-        time.sleep(1)
         return df
 
     except Exception, e:
         print 'PullHistory', str(e)
 
-def analysis(ds):                              # this function runs technical analysis over the dataset and adds results to the dataset
+def graphHistory(df, var):                    # this function graphs historical data
     try:
-        ds['20d_ma'] = ds['close'].rolling(window=20).mean()
-        ds['50d_ma'] = ds['close'].rolling(window=50).mean()
-        ds['Bol_upper'] = ds['close'].rolling(window=20).mean() + 2 * ds['close'].rolling(20, min_periods=20).std()
-        ds['Bol_lower'] = ds['close'].rolling(window=20).mean() - 2 * ds['close'].rolling(20, min_periods=20).std()
-        ds['Bol_BW'] = ((ds['Bol_upper'] - ds['Bol_lower']) / ds['20d_ma']) * 100
-        ds['Bol_BW_200MA'] = ds['Bol_BW'].rolling(window=50).mean()  # cant get the 200 daa
-        ds['Bol_BW_200MA'] = ds['Bol_BW_200MA'].fillna(method='backfill')  # ?? ,may not be good
-        # ds['20d_exma'] = ds['close'].ewm(span=20)
-        # ds['50d_exma'] = ds['close'].ewm(span=50)
-        # data_ext.all_stock_df = ds.sort('date', ascending=False)  # revese back to original
-
-        return ds
-
-    except Exception, e:
-        print 'analysis ', str(e)
-
-def graphHistory(df, pair):                      # this function graphs historical data
-    try:
-        fig = plt.figure()
+        # fig = plt.figure()
         ax = plt.subplot2grid((1, 1), (0, 0))
 
         candlestick2_ohlc(ax, df['open'], df['high'], df['low'], df['close'], width=0.6, colorup='#69f212', colordown='#E6323D')
-        ax.plot(df['20d_ma'], linestyle='-', label='20d sma')
-        ax.plot(df['Bol_upper'], linestyle='-', label='Boll upper')
-        ax.plot(df['Bol_lower'], linestyle='-', label='Boll lower')
-
+        if var['strategy'] == 'kissBB':
+            ax.plot(df['20d_ma'], linestyle='-', label='20d sma')
+            ax.plot(df['Bol_upper'], linestyle='-', label='Boll upper')
+            ax.plot(df['Bol_lower'], linestyle='-', label='Boll lower')          
+        elif var['strategy'] == 'tannous':
+            ax.plot(df['20d_ma'], linestyle='-', label='20d sma')
+            ax.plot(df['Bol_upper_22'], linestyle='-', label='Boll upper 22')
+            ax.plot(df['Bol_lower_22'], linestyle='-', label='Boll lower 22')
+            ax.plot(df['Bol_upper_30'], linestyle='-', label='Boll upper 30')
+            ax.plot(df['Bol_lower_30'], linestyle='-', label='Boll lower 30')
+ 
         plt.xlabel('Date')
         plt.ylabel('Price')
-        plt.title(pair)
+        plt.title(var['pair'])
         plt.legend()
 
         ax.xaxis.grid(True, 'major')
@@ -180,24 +170,34 @@ if __name__ == '__main__':
     var = readInputvariables()                                                      # reads input variables from file
     ledger = ledger()                                                               # instantiates the ledger
     logging.info('starting bot mode {0}'.format(var['mode']))
+    print var
     
     if var['mode'] == 'history':                    
         data = pullHistory(var['pair'], var['period'], var['start'], var['end'])    # fetches historic data from the exchange between dates
         dataF = analysis(data)                                                      # calculates technical analysis on the fetched data
-            
+        print 'entering mode history'
+        print len(dataF)
+        print dataF
         i = 0
         while i < len(dataF):
             if i >= 20:
-                trade = kissBB(dataF.ix[i - 20:i], ledger, i, var)   # feeds the last 20 entries to the kissBB strategy, skips the first 20 (need at least 20 for MA)    
-            logging.info('i={0} \n{1}'.format(i, dataF.loc[i]))
+                if var['strategy'] == 'tannous':
+                    trade = tannous(dataF.ix[i - 20:i], ledger, i, var)  # feeds the last 20 entries to hannous strategy, skips the first 20 (need at least 20 for MA)    
+                elif var['strategy'] == 'kissBB':
+                    trade = kissBB(dataF.ix[i - 20:i], ledger, i, var)   # feeds the last 20 entries to kissBB strategy, skips the first 20 (need at least 20 for MA)    
+                else:
+                    print ('Error in strategy, make sure it is spelt correctly')   
+                    exit(0)
+            # logging.info('i={0} \n{1}'.format(i, dataF.loc[i]))
             i = i + 1
         
-        df = pd.DataFrame(ledger.ledger)                             # transfors ledger in a dataframe for easy analysis
+        df = pd.DataFrame(ledger.ledger)                                 # transforms ledger in a panda dataframe for easy analysis
+        print 'printing final results'
         print df
         logging.info(df)
         print 'profit', df['profit'].sum()
         logging.info('profit {0}'.format(df['profit'].sum()))
-        graphHistory(dataF, var['pair'])
+        graphHistory(dataF, var)
     
     elif var['mode'] == 'realtime':
         exchangeHandle = connectExchange(var['exchange'])                           # connects to exchange
@@ -215,12 +215,18 @@ if __name__ == '__main__':
                     newCandle = createCandle(realtimeData)                              # create new candle
                     candles = candles + newCandle                                       # adds the new candle to the candle list
                     candlesDF = pd.DataFrame(candles)                                   # create dataframe ready for technical analysis
-                    candlesTAdf = analysis(candlesDF)                                   # dataframe contains now the candles and the technical analysis
-                    trade = kissBB(candlesTAdf, ledger, i, var)                         # go make some money
-                    i = 0                                                               # reset the period
-                    realtimeData = realtimeData.ix[-1:-2]                               # flushes the data, ready for a new period to calculate the candle
-                    if trade:
-                        df = pd.DataFrame(ledger.ledger)                                # transfors ledger in a dataframe for easy analysis
+                    candlesTAdf = analysis(candlesDF)                                   # runs technical analysis calculations on the candle data
+                    if var['strategy'] == 'tannous':
+                        trade = tannous(candlesTAdf, ledger, i, var)                    # go hannous go
+                    elif var['strategy'] == 'kissBB':
+                        trade = kissBB(candlesTAdf, ledger, i, var)                     # go make some money
+                    else:
+                        print ('Error in strategy, make sure it is spelt correctly on botConfig.cfg file')   
+                        exit(0)
+                    i = 0                                                               # reset the period, ready for a new candle
+                    realtimeData = realtimeData.ix[-1:-2]                               # flushes the real time data, ready for a new candle
+                    if trade:                                                           # is there a new trade? if so, lets show some results
+                        df = pd.DataFrame(ledger.ledger)                                # transforms ledger in a dataframe for easy analysis
                         print df
                         logging.info(df)
                         print 'profit', df['profit'].sum()
@@ -237,10 +243,10 @@ if __name__ == '__main__':
             # dataF.plot(x='date', y='weightedAverage')
             # plt.show()
             # polling (in seconds) determines the polling interval to the exchange
-            time.sleep(var['polling'])
+            time.sleep(var['polling'])          # this really determines the pace of queries to the exchange
 
     
     else:
-        pass
+        print ' Error in mode. Make sure mode is splet correctly'
 
 

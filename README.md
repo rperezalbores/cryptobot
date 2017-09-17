@@ -32,9 +32,14 @@ end = '02-08-2017'
 
 
 #Strategies
-At the moment only one strategy is implemented. More to be developed.
+More to be developed.
 
-######---------kissMA----------###### 
+######---------tannous----------###### 
+#bot purchases when price is between the lower Bollinger Band (30) and lower Bollinger Band 22 and the RSI is <30 (oversold condition)
+#bot sells in stoploss condition or price reaches the upper Bolinger bands (between 22 and 30)
+
+
+######---------kissBB----------###### 
 #bot purchases when any of the 'kissLow' previous candles lowest price touches the lower BB and the moving average is not decreasing for the last 'kissMA' periods
 #bot sells when any of the highest price of the previous 'kissHigh' candles touches the upper BB or if the purchase price is % 'kissStoploss' lower than the current price
 #kissMA
